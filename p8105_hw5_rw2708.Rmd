@@ -86,6 +86,7 @@ plot_zip = zip_file_tidy %>%
 
 ## Problem 3
 ```{r probelm3}
+#Write a function to calculate estimated beta 1 and the p value of the hypotheses test for beta 1 (sample size is fixed at 30 and beta 0 is fixed at 2)
 sim_regression = function(beta1=0,n=30,beta0 = 2) {
   
   sim_data = tibble(
@@ -95,7 +96,7 @@ sim_regression = function(beta1=0,n=30,beta0 = 2) {
   
   ls_fit= lm(y~x, data = sim_data)
   regression_result = broom::tidy(ls_fit)
-  #print(lm_result)
+ 
   
   tibble(
     beta1_hat = regression_result[[2,"estimate"]],
@@ -103,14 +104,92 @@ sim_regression = function(beta1=0,n=30,beta0 = 2) {
   )
 }
 
+#Generate 10000 datasets from the model with the true beta 1 value from 1 to 6
 sim_results = 
   tibble(beta1=c(1,2,3,4,5,6)) %>% 
   mutate(
-    beta1_hat = map(.x = beta1, ~rerun(5,sim_regression(beta1 = .x,n=30,beta0 = 2)))) %>% 
+    beta1_hat = map(.x = beta1, ~rerun(10000,sim_regression(beta1 = .x,n=30,beta0 = 2)))) %>% 
   unnest(col = "beta1_hat") %>% 
   unnest(col = "beta1_hat")
 
+
+#Make a plot showing the proportion of times the null was rejected on the y axis and the true value of β2 on the x axis
+
 plot1 = sim_results %>% 
+  mutate(reject_null=case_when(p_value < 0.05 ~ "true",
+                               TRUE ~ "false")) %>%
+  #convert the true beta1 as factor for plotting
+  mutate(beta1 = as.factor(beta1),
+         beta1 = forcats::fct_relevel(beta1,c("1","2","3","4","5","6"))) %>% 
+  #calculate the power at each level of true beta 1
+  group_by(beta1, reject_null) %>% 
+  summarize(power = n()/10000) %>% 
+  filter(reject_null=="true") %>% 
+  #Start to draw the plot
+  ggplot(aes(x = beta1, y = power) ) + 
+  geom_col(aes(fill = beta1)) +
+   labs(
+    title = "The Power of the test & True Value of β1",
+    x = "True Value of β1",
+    y = "Power"
+    ) +
+    scale_x_discrete(
+    # alteration for x-axis labels 
+    breaks = c(0, 1, 2, 3, 4, 5, 6),
+    labels = c("0", "1", "2", "3", "4", "5", "6")) +
+    scale_y_continuous(
+    breaks = c(0, 0.25, 0.5, 0.75, 1.00),
+    labels = c("0", "25%", "50%", "75%", "100%")
+  )
+ 
+plot1  
+
+#Make a plot showing the average estimate of beta 1 hat vs.the true value of β1 and a plot of average estimate of beta 1 hat in samples for which the null was rejected vs. the true value of β1 overlays on the first plot
+
+plot2 = sim_results %>% 
+  #convert the true beta1 as factor for plotting
+   mutate(beta1 = as.factor(beta1),
+         beta1 = forcats::fct_relevel(beta1,c("1","2","3","4","5","6"))) %>% 
+  #make a variable that shows the rejection status
+  mutate(reject_null=case_when(p_value < 0.05 ~ "true",
+                               TRUE ~ "false")) %>% 
+  #calculate the average beta 1 hat in all samples
+  group_by(beta1) %>% 
+  mutate(avg_beta1_hat=mean(beta1_hat)) %>% 
+  ungroup() %>% 
+  #calculate the average beta 1 hat in samples for which the null was rejected 
+  group_by(beta1,reject_null) %>% 
+  mutate(avg_reject_beta1_hat=mean(beta1_hat)) %>% 
+  filter(reject_null=="true") %>%
+  ungroup() %>% 
+  #create a new variable shows all average beta 1 hat and beta 1 hat category (all sample vs. samples for which the null was rejected  )
+   pivot_longer(
+    cols = c(avg_reject_beta1_hat, avg_beta1_hat),
+    names_to = "avg_beta1_hat_category",
+    values_to = "avg_beta1_hat_combined"
+  ) %>% 
+  #start to draw the plot
+  ggplot(aes(x = beta1, y = avg_beta1_hat_combined, color=avg_beta1_hat_category) ) +
+  geom_point(aes(color = avg_beta1_hat_category)) +
+   labs(
+    title = "Average Estimate of β1 vs. True Value of β1",
+    x = "True Value of β1",
+    y = "Average Estimate of β1"
+    ) +
+    scale_x_discrete(
+    # alteration for x-axis labels 
+    breaks = c(0, 1, 2, 3, 4, 5, 6),
+    labels = c("0", "1", "2", "3", "4", "5", "6")) +
+    scale_y_continuous(
+    # make the y-axis labels to be reader-friendly
+    breaks = c(0, 1, 2, 3, 4, 5, 6),
+    labels = c("0", "1", "2", "3", "4", "5", "6")) +
+    # change the label for x-axis
+    scale_color_discrete("Sample",labels = c("all sample","sample for which null is rejected"))
+  
+
+plot2
+
   
 
 
